@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Bolinha de Golfe - Space Invaders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    body { background: #222; color: #fff; font-family: Arial; text-align: center; margin: 0; }
+    canvas { background: #000; display: block; margin: 20px auto; border: 2px solid #fff; }
+    #score { font-size: 1.2em; margin: 10px; }
+    button { margin: 10px; padding: 8px 18px; font-size: 1em; border-radius: 6px; border: none; background: #444; color: #fff; }
+    button:hover { background: #666; }
+  </style>
+</head>
+<body>
+  <h2>Bolinha de Golfe - Space Invaders</h2>
+  <div id="score">Pontos: 0</div>
+  <canvas id="game" width="320" height="480"></canvas>
+  <div>
+    <button onclick="restartGame()">Novo Jogo</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    // Jogador (lançador)
+    const player = { x: W/2, y: H-30, w: 36, h: 16, speed: 8 };
+
+    // Bolinhas de golfe (disparos)
+    let balls = [];
+
+    // Naves inimigas
+    let enemies = [];
+    let enemyDir = 1;
+    let enemySpeed = 16;
+    let enemyStep = 24;
+    let enemyDown = false;
+    let enemyMoveTick = 0;
+
+    let score = 0;
+    let message = "";
+    let gameOver = false;
+
+    function initEnemies() {
+      enemies = [];
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 8; col++) {
+          enemies.push({
+            x: 32 + col*32,
+            y: 40 + row*32,
+            w: 24,
+            h: 16,
+            alive: true
+          });
+        }
+      }
+      enemyDir = 1;
+      enemySpeed = 16;
+      enemyDown = false;
+      enemyMoveTick = 0;
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(player.x-player.w/2, player.y-player.h/2, player.w, player.h);
+      ctx.beginPath();
+      ctx.arc(player.x, player.y+player.h/2, player.w/2.5, Math.PI, 2*Math.PI);
+      ctx.fillStyle = "#888";
+      ctx.fill();
+    }
+
+    function drawBalls() {
+      for (const ball of balls) {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, 8, 0, 2*Math.PI);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#0a0";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+
+    function drawEnemies() {
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        // nave: corpo
+        ctx.fillStyle = "#0ff";
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+        // nave: "cúpula"
+        ctx.beginPath();
+        ctx.arc(e.x+e.w/2, e.y, e.w/2, Math.PI, 2*Math.PI);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+      }
+    }
+
+    function drawMessage() {
+      if (message) {
+        ctx.font = "bold 22px Arial";
+        ctx.fillStyle = "#ff0";
+        ctx.textAlign = "center";
+        ctx.fillText(message, W/2, H/2);
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      drawPlayer();
+      drawBalls();
+      drawEnemies();
+      drawMessage();
+    }
+
+    function update() {
+      // Move bolas
+      for (const ball of balls) {
+        ball.y -= ball.vy;
+      }
+      // Remove bolas fora da tela
+      balls = balls.filter(b => b.y > -20 && !b.hit);
+
+      // Move inimigos
+      enemyMoveTick++;
+      if (enemyMoveTick >= 10) {
+        let moveDown = false;
+        let minX = Math.min(...enemies.filter(e=>e.alive).map(e=>e.x));
+        let maxX = Math.max(...enemies.filter(e=>e.alive).map(e=>e.x+e.w));
+        if ((enemyDir > 0 && maxX + enemySpeed > W-8) || (enemyDir < 0 && minX - enemySpeed < 8)) {
+          moveDown = true;
+          enemyDir *= -1;
+        }
+        for (const e of enemies) {
+          if (!e.alive) continue;
+          if (moveDown) e.y += enemyStep;
+          else e.x += enemyDir * enemySpeed;
+        }
+        enemyMoveTick = 0;
+      }
+
+      // Checa colisão bola-inimigo
+      for (const ball of balls) {
+        if (ball.hit) continue;
+        for (const e of enemies) {
+          if (!e.alive) continue;
+          if (
+            ball.x > e.x && ball.x < e.x+e.w &&
+            ball.y > e.y && ball.y < e.y+e.h
+          ) {
+            e.alive = false;
+            ball.hit = true;
+            score++;
+            document.getElementById("score").textContent = "Pontos: " + score;
+            // Se acertar o centro da nave
+            if (Math.abs(ball.x - (e.x+e.w/2)) < 6) {
+              message = "REI DA BOLINHA DE GOLFE!";
+              setTimeout(() => { message = ""; }, 2000);
+            }
+          }
+        }
+      }
+
+      // Checa derrota (inimigo chegou embaixo)
+      if (enemies.some(e => e.alive && e.y+e.h >= player.y-player.h/2)) {
+        message = "Game Over!";
+        gameOver = true;
+      }
+
+      // Checa vitória
+      if (enemies.every(e => !e.alive)) {
+        message = "Você venceu!";
+        gameOver = true;
+      }
+
+      draw();
+      if (!gameOver) requestAnimationFrame(update);
+    }
+
+    function shootBall() {
+      if (balls.length > 6) return; // limita bolas na tela
+      balls.push({ x: player.x, y: player.y-18, vy: 12, hit: false });
+    }
+
+    function restartGame() {
+      balls = [];
+      score = 0;
+      message = "";
+      gameOver = false;
+      document.getElementById("score").textContent = "Pontos: 0";
+      player.x = W/2;
+      initEnemies();
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    // Controles: mouse/touch para mover e espaço/click para disparar
+    canvas.addEventListener("mousemove", e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      player.x = Math.max(player.w/2, Math.min(W-player.w/2, mx));
+    });
+    canvas.addEventListener("touchmove", e => {
+      if (e.touches.length) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.touches[0].clientX - rect.left;
+        player.x = Math.max(player.w/2, Math.min(W-player.w/2, mx));
+      }
+    });
+    canvas.addEventListener("mousedown", shootBall);
+    canvas.addEventListener("touchstart", function(e) { shootBall(); e.preventDefault(); });
+
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space") shootBall();
+      if (e.key === "r" || e.key === "R") restartGame();
+      if (e.key === "ArrowLeft") player.x = Math.max(player.x - player.speed, player.w/2);
+      if (e.key === "ArrowRight") player.x = Math.min(player.x + player.speed, W-player.w/2);
+    });
+
+    restartGame();
+  </script>
+</body>
+</html>
